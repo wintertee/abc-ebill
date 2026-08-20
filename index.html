@@ -14,6 +14,11 @@
   }
   h1 { font-size: 1.3rem; }
   .hint { color: var(--muted); font-size: .85rem; margin-top: -.4rem; }
+  .caution {
+    margin: .8rem 0; border: 1px solid #f0c36d; border-left: 4px solid #e9a820;
+    background: #fff8e1; border-radius: 6px; padding: .6rem .8rem;
+    font-size: .85rem; line-height: 1.5; color: #5a4500;
+  }
   .bar { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
   input[type=file] { font-size: .9rem; }
   button {
@@ -36,6 +41,7 @@
 <body>
 <h1>农行信用卡电子对账单 → xlsx</h1>
 <p class="hint">选择 .eml 文件。所有处理都在你本机浏览器里完成，账单数据不会上传到任何服务器。</p>
+<div class="caution">⚠️ 使用风险自负（Use at your own risk）：本程序未经充分测试，可能解析出错、核对误判或与实际账单不符。请以银行官方渠道的数据为准，谨慎使用。</div>
 
 <div class="bar">
   <input type="file" id="file" accept=".eml">
