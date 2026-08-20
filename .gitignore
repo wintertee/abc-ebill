@@ -1,0 +1,8 @@
+# 账单数据（含个人隐私：卡号、姓名、交易明细等）
+bills/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/

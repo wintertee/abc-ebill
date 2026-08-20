@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>农行信用卡对账单 → xlsx</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<style>
+  :root { --border: #d9d9d9; --muted: #888; --accent: #b5432e; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, "Microsoft YaHei", sans-serif;
+    max-width: 880px; margin: 2rem auto; padding: 0 1rem; color: #222;
+  }
+  h1 { font-size: 1.3rem; }
+  .hint { color: var(--muted); font-size: .85rem; margin-top: -.4rem; }
+  .bar { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+  input[type=file] { font-size: .9rem; }
+  button {
+    padding: .45rem 1rem; border-radius: 6px; border: 1px solid var(--border);
+    background: #fff; cursor: pointer; font-size: .9rem;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  #run { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #status { color: var(--muted); font-size: .85rem; }
+  .card {
+    margin-top: 1.2rem; border: 1px solid var(--border); border-radius: 8px;
+    padding: .8rem 1rem; background: #fafafa;
+  }
+  pre { white-space: pre-wrap; font-size: .82rem; line-height: 1.5; margin: .4rem 0; }
+  .dl { margin-top: 1rem; }
+  .dl button { margin: 0 .4rem .4rem 0; }
+  .error { color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>农行信用卡电子对账单 → xlsx</h1>
+<p class="hint">选择 .eml 文件。所有处理都在你本机浏览器里完成，账单数据不会上传到任何服务器。</p>
+
+<div class="bar">
+  <input type="file" id="file" accept=".eml">
+  <button id="run" disabled>转换</button>
+  <span id="status">正在加载 Pyodide…</span>
+</div>
+
+<div id="report" class="card" hidden></div>
+
+<div id="downloads" class="dl" hidden>
+  <p class="hint" style="margin-bottom:.4rem">下载 xlsx：</p>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let pyodide = null;
+
+async function init() {
+  try {
+    pyodide = await loadPyodide();
+    $('status').textContent = '正在载入 openpyxl…';
+    // openpyxl / wcwidth 不是 Pyodide 预编译包，用 micropip 从 PyPI 装（纯 Python，兼容）
+    await pyodide.loadPackage('micropip');
+    await pyodide.pyimport('micropip').install(['openpyxl', 'wcwidth']);
+    $('status').textContent = '正在载入处理脚本…';
+    const [core, web] = await Promise.all([
+      fetch('main.py').then(r => r.text()),
+      fetch('web_adapter.py').then(r => r.text()),
+    ]);
+    pyodide.FS.writeFile('/main.py', core);
+    pyodide.FS.writeFile('/web_adapter.py', web);
+    await pyodide.runPythonAsync(`
+      import sys
+      sys.path.insert(0, '/')
+      import web_adapter
+    `);
+    $('status').textContent = '就绪。';
+    $('run').disabled = false;
+  } catch (e) {
+    $('status').textContent = '加载失败：' + e;
+  }
+}
+
+$('run').addEventListener('click', async () => {
+  const f = $('file').files[0];
+  if (!f) return alert('请先选择 .eml 文件');
+  const status = $('status');
+  status.textContent = '正在处理…';
+  try {
+    const buf = await f.arrayBuffer();
+    const prefix = f.name.replace(/\.eml$/i, '');
+    const res = await pyodide.globals.get('web_adapter').process_eml(new Uint8Array(buf), prefix);
+    const result = res.toJs({ dict_converter: Object.fromEntries });
+
+    const report = $('report');
+    report.hidden = false;
+    if (!result.ok) {
+      report.innerHTML = '<p class="error">核对失败：</p><pre>' + escapeHtml(result.error) + '</pre>';
+      $('downloads').hidden = true;
+    } else {
+      report.innerHTML = '<pre>' + escapeHtml(result.report) + '</pre>';
+      renderDownload(result.zip, prefix);
+    }
+    status.textContent = '完成。';
+  } catch (e) {
+    status.textContent = '出错：' + e;
+  }
+});
+
+function renderDownload(zipB64, prefix) {
+  const box = $('downloads');
+  box.hidden = false;
+  box.innerHTML = '';
+  const btn = document.createElement('button');
+  btn.textContent = '下载全部（' + prefix + '_对账单.zip）';
+  btn.onclick = () => download(zipB64, prefix + '_对账单.zip', 'application/zip');
+  box.appendChild(btn);
+}
+
+function download(b64, filename, mime = 'application/octet-stream') {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+init();
+</script>
+</body>
+</html>
